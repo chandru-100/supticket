@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { Plus, MessageSquare, Clock, CheckCircle, List, ChevronRight, AlertCircle, Search, Filter } from 'lucide-react';
+import { Plus, MessageSquare, Clock, CheckCircle, List, ChevronRight, AlertCircle, Search, Filter, X } from 'lucide-react';
 
 const Dashboard = () => {
   const [tickets, setTickets] = useState([]);
@@ -10,7 +10,44 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [resolveFeedback, setResolveFeedback] = useState('');
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [ticketReplies, setTicketReplies] = useState([]);
+  const [repliesLoading, setRepliesLoading] = useState(false);
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (selectedTicket) {
+      setRepliesLoading(true);
+      api.get(`/tickets/${selectedTicket._id}/replies`)
+        .then(res => setTicketReplies(res.data.data))
+        .catch(err => console.error(err))
+        .finally(() => setRepliesLoading(false));
+    } else {
+      setTicketReplies([]);
+    }
+  }, [selectedTicket]);
+
+  const handleResolveFromModal = async () => {
+    if (!selectedTicket) return;
+    setResolveLoading(true);
+    try {
+      if (resolveFeedback.trim()) {
+        await api.post(`/tickets/${selectedTicket._id}/replies`, { message: resolveFeedback });
+      }
+      const res = await api.put(`/tickets/${selectedTicket._id}`, { status: 'Resolved' });
+      const updated = res.data.data;
+      
+      setTickets(prev => prev.map(t => t._id === updated._id ? updated : t));
+      setSelectedTicket(null);
+      setResolveFeedback('');
+    } catch (err) {
+      console.error('Error resolving ticket:', err);
+    } finally {
+      setResolveLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchTickets = async () => {
@@ -82,7 +119,7 @@ const Dashboard = () => {
 
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
-          <h1 className="page-title">Welcome, {user?.name.split(' ')[0]}!</h1>
+          <h1 className="page-title">Welcome, {user?.name?.split(' ')[0] || 'User'}!</h1>
           <p style={{ color: 'var(--text-light)', marginTop: '0.25rem' }}>Manage your active support requests</p>
         </div>
         <Link to="/create-ticket" className="btn btn-primary" style={{ borderRadius: '10px' }}>
@@ -155,7 +192,11 @@ const Dashboard = () => {
       ) : (
         <div style={{ display: 'grid', gap: '1rem' }}>
           {filteredTickets.map(ticket => (
-            <Link key={ticket._id} to={`/ticket/${ticket._id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div 
+              key={ticket._id} 
+              onClick={() => setSelectedTicket(ticket)} 
+              style={{ cursor: 'pointer' }}
+            >
               <div className="card" style={{ 
                 display: 'flex', 
                 justifyContent: 'space-between', 
@@ -185,8 +226,78 @@ const Dashboard = () => {
                   <ChevronRight size={20} color="var(--border)" />
                 </div>
               </div>
-            </Link>
+            </div>
           ))}
+        </div>
+      )}
+
+      {/* Ticket Modal */}
+      {selectedTicket && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <h2 style={{ fontSize: '1.25rem', margin: 0, lineHeight: 1.3 }}>{selectedTicket.title}</h2>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setSelectedTicket(null); setResolveFeedback(''); }} 
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', padding: '0.25rem' }}
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span className={`badge badge-${selectedTicket.priority.toLowerCase()}`}>{selectedTicket.priority}</span>
+              <span className={`badge badge-${selectedTicket.status.toLowerCase().replace(' ', '-')}`}>{selectedTicket.status}</span>
+              <span className="badge" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>{selectedTicket.category}</span>
+            </div>
+
+            {selectedTicket.status !== 'Resolved' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Resolution Feedback (Optional)</label>
+                  <textarea 
+                    className="form-control" 
+                    rows="3" 
+                    placeholder="Add a note before resolving..."
+                    value={resolveFeedback}
+                    onChange={(e) => setResolveFeedback(e.target.value)}
+                    style={{ resize: 'vertical' }}
+                  ></textarea>
+                </div>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handleResolveFromModal}
+                  disabled={resolveLoading}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  {resolveLoading ? 'Resolving...' : 'Resolve Ticket'}
+                </button>
+              </div>
+            )}
+            
+            {selectedTicket.status === 'Resolved' && (
+              <div style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 600, padding: '1.5rem 0' }}>
+                <CheckCircle size={32} style={{ margin: '0 auto 0.5rem' }} />
+                This ticket has been resolved.
+                {ticketReplies.length > 0 && (
+                  <div style={{ marginTop: '1.25rem', padding: '1rem', backgroundColor: 'var(--background)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'left', fontSize: '0.875rem', fontWeight: 500, border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Resolution Note</div>
+                    {ticketReplies[ticketReplies.length - 1].message}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

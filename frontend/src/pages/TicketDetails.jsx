@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { ChevronLeft, Send, User, Shield } from 'lucide-react';
+import { ChevronLeft, Send, Shield, Clock } from 'lucide-react';
 
 const TicketDetails = () => {
   const [ticket, setTicket] = useState(null);

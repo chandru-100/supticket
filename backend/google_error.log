@@ -1,0 +1,8 @@
+2026-05-23T14:44:17.419Z TypeError: next is not a function
+    at model.<anonymous> (/Users/chandrakanthndu/ENG/Webtech/SupTicket/backend/models/User.js:45:12)
+    at Kareem.execPre (/Users/chandrakanthndu/ENG/Webtech/SupTicket/backend/node_modules/kareem/index.js:59:39)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+2026-05-23T14:44:29.421Z TypeError: next is not a function
+    at model.<anonymous> (/Users/chandrakanthndu/ENG/Webtech/SupTicket/backend/models/User.js:45:12)
+    at Kareem.execPre (/Users/chandrakanthndu/ENG/Webtech/SupTicket/backend/node_modules/kareem/index.js:59:39)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)

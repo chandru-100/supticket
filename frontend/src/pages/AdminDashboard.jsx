@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Shield, AlertCircle, CheckCircle, Clock, List, Search, Filter, Users } from 'lucide-react';
+import { Shield, AlertCircle, CheckCircle, Clock, List, Search, Filter, Users, X } from 'lucide-react';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({
@@ -18,7 +18,70 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [resolveFeedback, setResolveFeedback] = useState('');
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [ticketReplies, setTicketReplies] = useState([]);
+  const [repliesLoading, setRepliesLoading] = useState(false);
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (selectedTicket) {
+      setRepliesLoading(true);
+      api.get(`/tickets/${selectedTicket._id}/replies`)
+        .then(res => setTicketReplies(res.data.data))
+        .catch(err => console.error(err))
+        .finally(() => setRepliesLoading(false));
+    } else {
+      setTicketReplies([]);
+    }
+  }, [selectedTicket]);
+
+  const handleResolveTicket = async (e, ticketId) => {
+    e.stopPropagation();
+    try {
+      const res = await api.put(`/tickets/${ticketId}`, { status: 'Resolved' });
+      const updatedTicket = res.data.data;
+      setTickets(prev => prev.map(t => t._id === updatedTicket._id ? updatedTicket : t));
+      
+      // Update stats 
+      setStats(prev => ({
+        ...prev,
+        openTickets: prev.openTickets > 0 ? prev.openTickets - 1 : 0,
+        resolvedTickets: prev.resolvedTickets + 1
+      }));
+    } catch (err) {
+      console.error('Error resolving ticket:', err);
+    }
+  };
+
+  const handleResolveFromModal = async () => {
+    if (!selectedTicket) return;
+    setResolveLoading(true);
+    try {
+      if (resolveFeedback.trim()) {
+        await api.post(`/tickets/${selectedTicket._id}/replies`, { message: resolveFeedback });
+      }
+      const res = await api.put(`/tickets/${selectedTicket._id}`, { status: 'Resolved' });
+      const updatedTicket = res.data.data;
+      
+      setTickets(prev => prev.map(t => t._id === updatedTicket._id ? updatedTicket : t));
+      
+      // Update stats 
+      setStats(prev => ({
+        ...prev,
+        openTickets: prev.openTickets > 0 ? prev.openTickets - 1 : 0,
+        resolvedTickets: prev.resolvedTickets + 1
+      }));
+      
+      setSelectedTicket(null);
+      setResolveFeedback('');
+    } catch (err) {
+      console.error('Error resolving ticket:', err);
+    } finally {
+      setResolveLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchAdminData = async () => {
@@ -65,7 +128,7 @@ const AdminDashboard = () => {
     if (search) {
       result = result.filter(t => 
         t.title.toLowerCase().includes(search.toLowerCase()) || 
-        t.user.name.toLowerCase().includes(search.toLowerCase()) ||
+        t.user?.name?.toLowerCase().includes(search.toLowerCase()) ||
         t._id.toLowerCase().includes(search.toLowerCase())
       );
     }
@@ -135,10 +198,10 @@ const AdminDashboard = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
-        <StatCard title="Total Tickets" value={stats.totalTickets} icon={<List color="var(--primary)" />} />
+        <StatCard title="Total Tickets" value={stats.totalTickets} icon={<List color="var(--primary)" />} onClick={() => setStatusFilter('All')} />
         <StatCard title="Active Users" value={Math.floor(stats.totalTickets * 1.5)} icon={<Users color="#8b5cf6" />} />
-        <StatCard title="Open" value={stats.openTickets} icon={<AlertCircle color="var(--primary)" />} />
-        <StatCard title="Resolved" value={stats.resolvedTickets} icon={<CheckCircle color="var(--success)" />} />
+        <StatCard title="Open" value={stats.openTickets} icon={<AlertCircle color="var(--primary)" />} onClick={() => setStatusFilter('Open')} />
+        <StatCard title="Resolved" value={stats.resolvedTickets} icon={<CheckCircle color="var(--success)" />} onClick={() => setStatusFilter('Resolved')} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', marginBottom: '3rem' }}>
@@ -146,15 +209,16 @@ const AdminDashboard = () => {
           <h3 style={{ marginBottom: '1.5rem', fontSize: '1.125rem', fontWeight: 700 }}>Ticket Distribution</h3>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 500 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 500 }} />
+              <BarChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }} barSize={48}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" strokeOpacity={0.5} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-light)', fontSize: 12, fontWeight: 600 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-light)', fontSize: 12, fontWeight: 600 }} dx={-10} />
                 <Tooltip 
-                  cursor={{ fill: 'var(--background)' }} 
-                  contentStyle={{ borderRadius: '0.5rem', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}
+                  cursor={{ fill: 'var(--border)', opacity: 0.4 }} 
+                  contentStyle={{ borderRadius: '12px', border: '1px solid var(--border)', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', backgroundColor: 'var(--surface)', fontWeight: 600, color: 'var(--text-primary)' }}
+                  itemStyle={{ fontWeight: 700 }}
                 />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={1000}>
                   {chartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
@@ -171,7 +235,11 @@ const AdminDashboard = () => {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {tickets.filter(t => t.priority === 'High' && t.status !== 'Resolved').slice(0, 5).map(ticket => (
-              <Link key={ticket._id} to={`/ticket/${ticket._id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <div 
+                key={ticket._id} 
+                onClick={() => setSelectedTicket(ticket)} 
+                style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
+              >
                 <div style={{ 
                   padding: '1rem', 
                   borderRadius: '0.75rem', 
@@ -185,7 +253,7 @@ const AdminDashboard = () => {
                     <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
             {tickets.filter(t => t.priority === 'High' && t.status !== 'Resolved').length === 0 && (
               <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-light)' }}>
@@ -240,14 +308,15 @@ const AdminDashboard = () => {
                 <th style={thStyle}>PRIORITY</th>
                 <th style={thStyle}>STATUS</th>
                 <th style={thStyle}>DATE</th>
+                <th style={thStyle}>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
               {filteredTickets.map(ticket => (
                 <tr 
                   key={ticket._id} 
-                  style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s' }} 
-                  onClick={() => window.location.href=`/ticket/${ticket._id}`}
+                  style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s', cursor: 'pointer' }} 
+                  onClick={() => setSelectedTicket(ticket)}
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--background)'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
@@ -274,6 +343,17 @@ const AdminDashboard = () => {
                       {new Date(ticket.createdAt).toLocaleDateString()}
                     </div>
                   </td>
+                  <td style={tdStyle}>
+                    {ticket.status !== 'Resolved' && (
+                      <button 
+                        onClick={(e) => handleResolveTicket(e, ticket._id)}
+                        className="btn btn-primary"
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', borderRadius: '8px', backgroundColor: 'var(--success)', border: 'none', color: 'white', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        Resolve
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {filteredTickets.length === 0 && (
@@ -287,12 +367,94 @@ const AdminDashboard = () => {
           </table>
         </div>
       </div>
+
+      {/* Ticket Modal */}
+      {selectedTicket && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <h2 style={{ fontSize: '1.25rem', margin: 0, lineHeight: 1.3 }}>{selectedTicket.title}</h2>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setSelectedTicket(null); setResolveFeedback(''); }} 
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', padding: '0.25rem' }}
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span className={`badge badge-${selectedTicket.priority.toLowerCase()}`}>{selectedTicket.priority}</span>
+              <span className={`badge badge-${selectedTicket.status.toLowerCase().replace(' ', '-')}`}>{selectedTicket.status}</span>
+              <span className="badge" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>{selectedTicket.category}</span>
+            </div>
+
+            {selectedTicket.status !== 'Resolved' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Resolution Feedback (Optional)</label>
+                  <textarea 
+                    className="form-control" 
+                    rows="3" 
+                    placeholder="Add a note before resolving..."
+                    value={resolveFeedback}
+                    onChange={(e) => setResolveFeedback(e.target.value)}
+                    style={{ resize: 'vertical' }}
+                  ></textarea>
+                </div>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handleResolveFromModal}
+                  disabled={resolveLoading}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  {resolveLoading ? 'Resolving...' : 'Resolve Ticket'}
+                </button>
+              </div>
+            )}
+            
+            {selectedTicket.status === 'Resolved' && (
+              <div style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 600, padding: '1.5rem 0' }}>
+                <CheckCircle size={32} style={{ margin: '0 auto 0.5rem' }} />
+                This ticket has been resolved.
+                {ticketReplies.length > 0 && (
+                  <div style={{ marginTop: '1.25rem', padding: '1rem', backgroundColor: 'var(--background)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'left', fontSize: '0.875rem', fontWeight: 500, border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Resolution Note</div>
+                    {ticketReplies[ticketReplies.length - 1].message}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const StatCard = ({ title, value, icon }) => (
-  <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', padding: '1.5rem' }}>
+const StatCard = ({ title, value, icon, onClick }) => (
+  <div 
+    className="card" 
+    onClick={onClick}
+    style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '1.25rem', 
+      padding: '1.5rem',
+      cursor: onClick ? 'pointer' : 'default',
+      transition: 'transform 0.2s, box-shadow 0.2s',
+      ...onClick && { ':hover': { transform: 'translateY(-2px)' } }
+    }}
+  >
     <div style={{ 
       backgroundColor: 'var(--background)', 
       padding: '0.875rem', 

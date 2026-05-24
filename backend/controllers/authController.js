@@ -1,5 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { OAuth2Client } = require('google-auth-library');
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || '57619951390-hq5le6knlnv50cb7n3jci1t7mqmulgjd.apps.googleusercontent.com');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -81,4 +84,48 @@ const sendTokenResponse = (user, statusCode, res) => {
     success: true,
     token
   });
+};
+
+// @desc    Google Login
+// @route   POST /api/auth/google
+// @access  Public
+exports.googleLogin = async (req, res) => {
+  try {
+    const { credential } = req.body;
+    
+    // Verify Google Token
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID || '57619951390-hq5le6knlnv50cb7n3jci1t7mqmulgjd.apps.googleusercontent.com'
+    });
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture: avatar } = payload;
+
+    // Check if user exists
+    let user = await User.findOne({ email });
+
+    if (user) {
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.avatar = avatar;
+        await user.save();
+      }
+    } else {
+      // Basic approach to assign admin (can add multiple emails here)
+      const role = email === 'chandrakanthndu@gmail.com' ? 'admin' : 'user';
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        avatar,
+        role
+      });
+    }
+
+    sendTokenResponse(user, 200, res);
+  } catch (error) {
+    console.error('Google Login Error:', error);
+    require('fs').appendFileSync('google_error.log', new Date().toISOString() + ' ' + error.stack + '\n');
+    res.status(401).json({ success: false, error: 'Invalid Google token', details: error.message });
+  }
 };

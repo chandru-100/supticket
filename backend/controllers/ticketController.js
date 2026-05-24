@@ -1,5 +1,6 @@
 const Ticket = require('../models/Ticket');
 const Reply = require('../models/Reply');
+const Notification = require('../models/Notification');
 
 // @desc    Get all tickets
 // @route   GET /api/tickets
@@ -62,6 +63,14 @@ exports.createTicket = async (req, res) => {
 
     const ticket = await Ticket.create(req.body);
 
+    // Notify Admins
+    await Notification.create({
+      user: null,
+      title: 'New Ticket Created',
+      message: `A new ticket "${ticket.title}" was submitted.`,
+      ticket: ticket._id
+    });
+
     res.status(201).json({
       success: true,
       data: ticket
@@ -90,6 +99,14 @@ exports.updateTicket = async (req, res) => {
     ticket = await Ticket.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
+    }).populate('user', 'name email');
+
+    // Notify the user about the update
+    await Notification.create({
+      user: ticket.user._id,
+      title: 'Ticket Status Updated',
+      message: `Your ticket "${ticket.title}" is now ${ticket.status}.`,
+      ticket: ticket._id
     });
 
     res.status(200).json({
@@ -160,6 +177,23 @@ exports.addReply = async (req, res) => {
     }
 
     const reply = await Reply.create(req.body);
+
+    // Notify the other party
+    if (req.user.role === 'admin') {
+      await Notification.create({
+        user: ticket.user,
+        title: 'New Reply Received',
+        message: `An admin replied to your ticket "${ticket.title}".`,
+        ticket: ticket._id
+      });
+    } else {
+      await Notification.create({
+        user: null,
+        title: 'New User Reply',
+        message: `User added a reply to ticket "${ticket.title}".`,
+        ticket: ticket._id
+      });
+    }
 
     res.status(201).json({
       success: true,

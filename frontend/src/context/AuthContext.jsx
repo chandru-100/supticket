@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('token', res.data.token);
     const userRes = await api.get('/auth/me');
     setUser(userRes.data.data);
-    return res.data;
+    return userRes.data.data;
   };
 
   // Logout
@@ -49,17 +49,13 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  // Development bypass (mocks login without backend)
-  const devBypass = (role) => {
-    const mockUser = {
-      _id: 'mock-id-' + role,
-      name: role === 'admin' ? 'Demo Admin' : 'Demo User',
-      email: role + '@demo.com',
-      role: role
-    };
-    localStorage.setItem('token', 'mock-token-' + role);
-    setUser(mockUser);
-    return mockUser;
+  // Google Login
+  const googleLogin = async (credential) => {
+    const res = await api.post('/auth/google', { credential });
+    localStorage.setItem('token', res.data.token);
+    const userRes = await api.get('/auth/me');
+    setUser(userRes.data.data);
+    return userRes.data.data;
   };
 
   return (
@@ -70,7 +66,7 @@ export const AuthProvider = ({ children }) => {
         register,
         login,
         logout,
-        devBypass,
+        googleLogin,
         isAdmin: user?.role === 'admin'
       }}
     >
